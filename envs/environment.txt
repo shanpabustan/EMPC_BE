@@ -1,0 +1,1 @@
+A lightweight and scalable Golang backend template designed for rapid API development. It includes a structured project layout, environment-based configuration, built-in logging, error handling, and essential middleware to help teams quickly bootstrap reliable and maintainable backend services.
