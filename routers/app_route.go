@@ -3,7 +3,7 @@ package routers
 import (
 	global "ea-app/pkg/global/json_response"
 	loggerV1 "ea-app/pkg/middleware/logger/v1"
-	crlDataEncryptionV1 "ea-app/pkg/services/DataEncryption/controller/v1"
+	crlDataEncryptionV1 "ea-app/pkg/services/data_encryption/controller/v1"
 	"net/http"
 
 	"github.com/gofiber/fiber/v3"

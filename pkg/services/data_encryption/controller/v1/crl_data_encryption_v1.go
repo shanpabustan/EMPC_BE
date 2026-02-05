@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	helper "ea-app/pkg/global/json_response"
 	encrypDecryptV1 "ea-app/pkg/middleware/encryption/v1"
-	mdlDataEncryptionV1 "ea-app/pkg/services/DataEncryption/model/v1"
+	mdlDataEncryptionV1 "ea-app/pkg/services/data_encryption/model/v1"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
