@@ -2,9 +2,9 @@ package crlDataEncryptionV1
 
 import (
 	"crypto/rand"
-	helper "ea-app/pkg/global/json_response"
-	encrypDecryptV1 "ea-app/pkg/middleware/encryption/v1"
-	mdlDataEncryptionV1 "ea-app/pkg/services/data_encryption/model/v1"
+	helper "golang-template-v3.1/pkg/global/json_response"
+	encrypDecryptV1 "golang-template-v3.1/pkg/middleware/encryption/v1"
+	mdlDataEncryptionV1 "golang-template-v3.1/pkg/services/data_encryption/model/v1"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"

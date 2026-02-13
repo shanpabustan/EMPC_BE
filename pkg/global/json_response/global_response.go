@@ -4,11 +4,12 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	utilityV2 "golang-template-v3.1/pkg/middleware/utility/v2"
 )
 
 type (
 	Response struct {
-		ResponseTime string `json:"response_time"`
+		ResponseTime utilityV2.CustomTime `json:"response_time"`
 		Device       string `json:"device"`
 		RetCode      string `json:"ret_code"`
 		Message      string `json:"message"`
@@ -25,7 +26,7 @@ type (
 
 func JSONResponseV1(c fiber.Ctx, recCode, retMessage string, httpStatusCode int) error {
 	return c.Status(httpStatusCode).JSON(Response{
-		ResponseTime: time.Now().Format(time.DateTime),
+		ResponseTime: utilityV2.CustomTime{Time: time.Now()},
 		Device:       string(c.RequestCtx().UserAgent()),
 		RetCode:      recCode,
 		Message:      retMessage,
@@ -34,7 +35,7 @@ func JSONResponseV1(c fiber.Ctx, recCode, retMessage string, httpStatusCode int)
 
 func JSONResponseWithDataV1(c fiber.Ctx, recCode, retMessage string, data any, httpStatusCode int) error {
 	return c.Status(httpStatusCode).JSON(Response{
-		ResponseTime: time.Now().Format(time.DateTime),
+		ResponseTime: utilityV2.CustomTime{Time: time.Now()},
 		Device:       string(c.RequestCtx().UserAgent()),
 		RetCode:      recCode,
 		Message:      retMessage,
@@ -44,7 +45,7 @@ func JSONResponseWithDataV1(c fiber.Ctx, recCode, retMessage string, data any, h
 
 func JSONResponseWithErrorV1(c fiber.Ctx, recCode, retMessage string, err error, httpStatusCode int) error {
 	return c.Status(httpStatusCode).JSON(Response{
-		ResponseTime: time.Now().Format(time.DateTime),
+		ResponseTime: utilityV2.CustomTime{Time: time.Now()},
 		Device:       string(c.RequestCtx().UserAgent()),
 		RetCode:      recCode,
 		Message:      retMessage,

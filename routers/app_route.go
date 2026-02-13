@@ -1,9 +1,9 @@
 package routers
 
 import (
-	global "ea-app/pkg/global/json_response"
-	loggerV1 "ea-app/pkg/middleware/logger/v1"
-	crlDataEncryptionV1 "ea-app/pkg/services/data_encryption/controller/v1"
+	global "golang-template-v3.1/pkg/global/json_response"
+	loggerV1 "golang-template-v3.1/pkg/middleware/logger/v1"
+	crlDataEncryptionV1 "golang-template-v3.1/pkg/services/data_encryption/controller/v1"
 	"net/http"
 
 	"github.com/gofiber/fiber/v3"

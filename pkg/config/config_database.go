@@ -2,9 +2,9 @@ package config
 
 import (
 	"context"
-	"ea-app/pkg/global/model"
-	encrypDecryptV1 "ea-app/pkg/middleware/encryption/v1"
-	utilityV1 "ea-app/pkg/middleware/utility/v1"
+	"golang-template-v3.1/pkg/global/model"
+	encrypDecryptV1 "golang-template-v3.1/pkg/middleware/encryption/v1"
+	utilityV1 "golang-template-v3.1/pkg/middleware/utility/v1"
 	"fmt"
 	"log"
 	"os"
