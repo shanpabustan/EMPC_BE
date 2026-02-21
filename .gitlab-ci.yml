@@ -11,7 +11,7 @@ sonar_scan:
     name: sonarsource/sonar-scanner-cli:latest
     entrypoint: [""]
   tags:
-    - docker
+    - local-runner
   script:
     - echo "🔍 Running SonarQube scan..."
     - |
