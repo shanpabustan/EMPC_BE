@@ -16,10 +16,10 @@ build_job:
     - echo "Downloading dependencies..."
     - go mod tidy
     - echo "Building the app..."
-    - go build -o go_template_v3 ./...
+    - go build -o my_app ./...
   artifacts:
     paths:
-      - go_template_v3
+      - my_app
 
 # Test job
 test_job:
