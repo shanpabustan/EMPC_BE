@@ -2,20 +2,15 @@ stages:
   - sonar
 
 variables:
-  # Use Docker Desktop host to reach your local SonarQube
   SONAR_HOST_URL: "http://host.docker.internal:9000"
-  SONAR_LOGIN: "${SONAR_TOKEN}"  # create a token in SonarQube and add it as GitLab CI variable
+  SONAR_LOGIN: "${SONAR_TOKEN}"
 
 sonar_scan:
   stage: sonar
   image: sonarsource/sonar-scanner-cli:11
   script:
-    # Show scanner version (optional, for debugging)
+    # Show scanner version (optional)
     - sonar-scanner --version
 
-    # Run SonarQube analysis
-    - sonar-scanner \
-        -Dsonar.projectKey=development7734933_go_template_v3.1_251ddc65-4c9a-485c-bd30-fc44c539c9713 \
-        -Dsonar.sources=. \
-        -Dsonar.host.url=$SONAR_HOST_URL \
-        -Dsonar.login=$SONAR_LOGIN
+    # Run SonarQube analysis in a single line
+    - sonar-scanner -Dsonar.projectKey=development7734933_go_template_v3_251ddc65-4c9a-485c-bd30-fc44c539c9713 -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_LOGIN
