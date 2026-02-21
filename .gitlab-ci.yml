@@ -3,7 +3,7 @@ stages:
 
 variables:
   SONAR_HOST_URL: "http://host.docker.internal:9000"
-  SONAR_LOGIN: "${SONAR_TOKEN}"
+  SONAR_TOKEN: "${SONAR_TOKEN}"
 
 sonar_scan:
   stage: sonar
