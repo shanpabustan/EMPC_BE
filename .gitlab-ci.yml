@@ -1,16 +1,23 @@
 stages:
-  - sonar
+  - sonar_scan
 
 variables:
-  SONAR_HOST_URL: "http://host.docker.internal:9000"
-  SONAR_TOKEN: "${SONAR_TOKEN}"
+  SONAR_HOST_URL: "http://172.27.16.1:9000/"
+  SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
 
 sonar_scan:
-  stage: sonar
-  image: sonarsource/sonar-scanner-cli:11
+  stage: sonar_scan
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  tags:
+    - docker
   script:
-    # Show scanner version (optional)
-    - sonar-scanner --version
-
-    # Run SonarQube analysis in a single line
-    - sonar-scanner -Dsonar.projectKey=development7734933_go_template_v3_251ddc65-4c9a-485c-bd30-fc44c539c9713 -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_LOGIN
+    - echo "🔍 Running SonarQube scan..."
+    - |
+      sonar-scanner \
+        -Dsonar.projectKey=development7734933_go_template_v3.1_251ddc65-4c9a-485c-bd30-fc44c539c971 \
+        -Dsonar.host.url=${SONAR_HOST_URL} \
+        -Dsonar.login=${SONAR_TOKEN} \
+        -Dsonar.qualitygate.wait=true
+  allow_failure: false
