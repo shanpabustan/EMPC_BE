@@ -15,7 +15,7 @@ sonar_scan:
 
     # Run SonarQube analysis
     - sonar-scanner \
-        -Dsonar.projectKey=go_template_v3 \
+        -Dsonar.projectKey=development7734933_go_template_v3.1_251ddc65-4c9a-485c-bd30-fc44c539c9713 \
         -Dsonar.sources=. \
         -Dsonar.host.url=$SONAR_HOST_URL \
         -Dsonar.login=$SONAR_LOGIN
