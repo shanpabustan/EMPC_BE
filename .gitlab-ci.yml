@@ -8,11 +8,12 @@ variables:
 
 stages:
   - build-sonar
+  - sonar-scanner
 
 build-sonar:
   stage: build-sonar
   
-  
+
   cache:
     policy: pull-push
     key: "sonar-cache-$CI_COMMIT_REF_SLUG"
@@ -28,3 +29,12 @@ build-sonar:
     - if: $CI_COMMIT_BRANCH == 'master'
     - if: $CI_COMMIT_BRANCH == 'main'
     - if: $CI_COMMIT_BRANCH == 'develop'
+
+sonar-scanner:
+  stage: sonar-scanner
+  image: sonarsource/sonar-scanner-cli:11
+  variables:
+    SONAR_HOST_URL: "http://host.docker.internal:9000"
+    SONAR_LOGIN: "${SONAR_TOKEN}"
+  script:
+    - sonar-scanner -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_LOGIN
