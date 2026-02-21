@@ -40,24 +40,41 @@ func EncrypDecryptV1(c fiber.Ctx) error {
 	}
 
 	// pass the data to encryption function
-	encryptedData := &mdlDataEncryptionV1.DatabaseData{
-		SecretKey: dbData.SecretKey,
-		DBHost:    encryptedDBHost,
-		DBName:    encryptedDBName,
-		DBUser:    encryptedDBUser,
-		DBPass:    encryptedDBPass,
-	}
+	dbData.DBHost = encryptedDBHost
+	dbData.DBName = encryptedDBName
+	dbData.DBUser = encryptedDBUser
+	dbData.DBPass = encryptedDBPass
 
-	return helper.JSONResponseWithDataV1(c, "200", "success", encryptedData, fiber.StatusOK)
+	return helper.JSONResponseWithDataV1(c, "200", "success", dbData, fiber.StatusOK)
 }
 
 func DecryptDataV1(c fiber.Ctx) error {
-	dbData := mdlDataEncryptionV1.DatabaseData{
-		DBHost: "localhost",
-		DBName: "postgres",
-		DBUser: "postgres",
-		DBPass: "postgres",
+	dbData := &mdlDataEncryptionV1.DatabaseData{}
+	parseErr := c.Bind().Body(dbData)
+	if parseErr != nil {
+		return helper.JSONResponseWithErrorV1(c, "400", "failed to parse request body", parseErr, fiber.StatusBadRequest)
 	}
+
+	// null checking
+	if dbData.SecretKey == "" {
+		return helper.JSONResponseV1(c, "400", "secret key is required", fiber.StatusBadRequest)
+	}
+
+	// decrypt data
+	decryptedHost, dErr := encrypDecryptV1.DecryptV1(dbData.DBHost, dbData.SecretKey)
+	decryptedName, dErr := encrypDecryptV1.DecryptV1(dbData.DBName, dbData.SecretKey)
+	decryptedUser, dErr := encrypDecryptV1.DecryptV1(dbData.DBUser, dbData.SecretKey)
+	decryptedPass, dErr := encrypDecryptV1.DecryptV1(dbData.DBPass, dbData.SecretKey)
+	if dErr != nil {
+		return helper.JSONResponseWithErrorV1(c, "400", "failed to decrypt data", dErr, fiber.StatusBadRequest)
+	}
+
+	// pass the data to decryption function
+	dbData.DBHost = decryptedHost
+	dbData.DBName = decryptedName
+	dbData.DBUser = decryptedUser
+	dbData.DBPass = decryptedPass
+
 	return helper.JSONResponseWithDataV1(c, "200", "success", dbData, fiber.StatusOK)
 }
 

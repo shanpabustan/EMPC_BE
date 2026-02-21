@@ -25,7 +25,7 @@ func AppRoutes(app *fiber.App) {
 	// TOOLS GROUP
 	// FOR
 	utility := apiV1.Group("/utility")
-	utility.Post("/encrypData", crlDataEncryptionV1.EncrypDecryptV1)
-	utility.Post("/decryptData", crlDataEncryptionV1.DecryptDataV1)
+	utility.Post("/encryp-data", crlDataEncryptionV1.EncrypDecryptV1)
+	utility.Post("/decrypt-data", crlDataEncryptionV1.DecryptDataV1)
 
 }
