@@ -22,10 +22,9 @@ func AppRoutes(app *fiber.App) {
 		return global.JSONResponseV1(c, "200", "API version 1 is running...", http.StatusOK)
 	})
 
-	// TOOLS GROUP
-	// FOR
+	// UTILITY
 	utility := apiV1.Group("/utility")
-	utility.Post("/encryp-data", crlDataEncryptionV1.EncrypDecryptV1)
+	utility.Post("/encrypt-data", crlDataEncryptionV1.EncrypDecryptV1)
 	utility.Post("/decrypt-data", crlDataEncryptionV1.DecryptDataV1)
 
 }
