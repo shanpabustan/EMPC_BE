@@ -1,11 +1,11 @@
 package main
 
 import (
+	"EMPC_BE/pkg/config"
+	loggerV1 "EMPC_BE/pkg/middleware/logger/v1"
+	utilityV1 "EMPC_BE/pkg/middleware/utility/v1"
+	"EMPC_BE/routers"
 	"crypto/tls"
-	"golang-template-v3.1/pkg/config"
-	loggerV1 "golang-template-v3.1/pkg/middleware/logger/v1"
-	utilityV1 "golang-template-v3.1/pkg/middleware/utility/v1"
-	"golang-template-v3.1/routers"
 	"encoding/json"
 	"fmt"
 	"log"

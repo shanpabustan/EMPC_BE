@@ -1,9 +1,10 @@
 package routers
 
 import (
-	global "golang-template-v3.1/pkg/global/json_response"
-	loggerV1 "golang-template-v3.1/pkg/middleware/logger/v1"
-	crlDataEncryptionV1 "golang-template-v3.1/pkg/services/data_encryption/controller/v1"
+	global "EMPC_BE/pkg/global/json_response"
+	loggerV1 "EMPC_BE/pkg/middleware/logger/v1"
+	crlDataEncryptionV1 "EMPC_BE/pkg/services/data_encryption/controller/v1"
+	ctrRbac "EMPC_BE/pkg/services/rbac/controller"
 	"net/http"
 
 	"github.com/gofiber/fiber/v3"
@@ -26,5 +27,12 @@ func AppRoutes(app *fiber.App) {
 	utility := apiV1.Group("/utility")
 	utility.Post("/encrypt-data", crlDataEncryptionV1.EncrypDecryptV1)
 	utility.Post("/decrypt-data", crlDataEncryptionV1.DecryptDataV1)
+
+	// RBAC
+	rbac := apiV1.Group("/rbac")
+	rbac.Post("/assign-navigation-access", ctrRbac.AssignNavigationAccess)
+	rbac.Get("/all-roles-navigation-access", ctrRbac.GetAllRolesNavigationAccess)
+	rbac.Get("/role/:roleId/navigation-access", ctrRbac.GetRoleNavigationAccess)
+	rbac.Delete("/remove-navigation-access", ctrRbac.RemoveNavigationAccess)
 
 }

@@ -3,19 +3,20 @@ package helper
 import (
 	"time"
 
+	utilityV2 "EMPC_BE/pkg/middleware/utility/v2"
+
 	"github.com/gofiber/fiber/v3"
-	utilityV2 "golang-template-v3.1/pkg/middleware/utility/v2"
 )
 
 type (
 	Response struct {
 		ResponseTime utilityV2.CustomTime `json:"response_time"`
-		Device       string `json:"device"`
-		RetCode      string `json:"ret_code"`
-		Message      string `json:"message"`
-		Result       any    `json:"validation,omitempty"`
-		Data         any    `json:"response,omitempty"`
-		Error        any    `json:"error,omitempty"`
+		Device       string               `json:"device"`
+		RetCode      string               `json:"ret_code"`
+		Message      string               `json:"message"`
+		Result       any                  `json:"validation,omitempty"`
+		Data         any                  `json:"response,omitempty"`
+		Error        any                  `json:"error,omitempty"`
 	}
 
 	EPResponse struct {

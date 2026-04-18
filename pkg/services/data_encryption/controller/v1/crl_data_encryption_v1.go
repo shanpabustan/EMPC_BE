@@ -1,10 +1,10 @@
 package crlDataEncryptionV1
 
 import (
+	helper "EMPC_BE/pkg/global/json_response"
+	encrypDecryptV1 "EMPC_BE/pkg/middleware/encryption/v1"
+	mdlDataEncryptionV1 "EMPC_BE/pkg/services/data_encryption/model/v1"
 	"crypto/rand"
-	helper "golang-template-v3.1/pkg/global/json_response"
-	encrypDecryptV1 "golang-template-v3.1/pkg/middleware/encryption/v1"
-	mdlDataEncryptionV1 "golang-template-v3.1/pkg/services/data_encryption/model/v1"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"

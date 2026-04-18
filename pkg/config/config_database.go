@@ -1,10 +1,10 @@
 package config
 
 import (
+	"EMPC_BE/pkg/global/model"
+	encrypDecryptV1 "EMPC_BE/pkg/middleware/encryption/v1"
+	utilityV1 "EMPC_BE/pkg/middleware/utility/v1"
 	"context"
-	"golang-template-v3.1/pkg/global/model"
-	encrypDecryptV1 "golang-template-v3.1/pkg/middleware/encryption/v1"
-	utilityV1 "golang-template-v3.1/pkg/middleware/utility/v1"
 	"fmt"
 	"log"
 	"os"
