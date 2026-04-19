@@ -1,11 +1,16 @@
 package crtlAuth
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 
+	"EMPC_BE/pkg/config"
 	helper "EMPC_BE/pkg/global/json_response"
 	httpRequestV1 "EMPC_BE/pkg/middleware/httpRequest/v1"
 	utilityV1 "EMPC_BE/pkg/middleware/utility/v1"
@@ -15,89 +20,236 @@ import (
 
 	"github.com/FDSAP-Git-Org/hephaestus/respcode"
 	"github.com/gofiber/fiber/v3"
+	"golang.org/x/crypto/bcrypt"
 )
 
-// ============================================
-// STAFF REGISTRATION ENDPOINT
-// ============================================
+func CheckUserExists(username, email, staffID string) (bool, error) {
+	var count int64
+
+	err := config.DBConnList[0].Debug().Raw(`
+		SELECT COUNT(*) FROM public.users
+		WHERE deleted_at IS NULL
+		AND (
+			staff_id = ?
+			OR (username = ? AND ? != '')
+			OR (email = ? AND ? != '')
+		)`,
+		staffID,
+		username, username,
+		email, email,
+	).Scan(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("failed to check user existence: %w", err)
+	}
+
+	return count > 0, nil
+}
+
+func HashPassword(plain string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+	return string(bytes), err
+}
+
 func RegisterUser(c fiber.Ctx) error {
+	// 1. Parse request body
 	var req mdlAuth.RegisterStaffRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_301,
 			"Parsing request body failed", err, http.StatusBadRequest)
 	}
 
-	// Build API request with defaults
+	fmt.Println(req)
+
+	// 3. Check if user already exists
+	exists, err := CheckUserExists(
+		strings.TrimSpace(req.Username),
+		strings.TrimSpace(req.Email),
+		strings.TrimSpace(req.StaffID),
+	)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_500,
+			"Failed to check user existence", err, http.StatusInternalServerError)
+	}
+	if exists {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_400,
+			"User already exists", nil, http.StatusConflict)
+	}
+	fmt.Println(req.StaffID)
+	fmt.Println(req.InstitutionCode)
+	// 3. Build external API request
 	apiReq := mdlAuth.StaffRegistrationApiRequest{
 		StaffID:         req.StaffID,
 		InstitutionCode: req.InstitutionCode,
+		Username:        req.Username,
+		FirstName:       req.FirstName,
+		MiddleName:      req.MiddleName,
+		LastName:        req.LastName,
+		Email:           req.Email,
+		PhoneNo:         req.PhoneNo,
 		Birthdate:       req.Birthdate,
-		Username:        "",
-		FirstName:       "first_name",
-		MiddleName:      "middle_name",
-		LastName:        "last_name",
-		PhoneNo:         "09123456789",
-		Email:           "email@gmail.com",
 	}
 
-	// Call external staff registration endpoint
-	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/helper/auth/user-management/register-new-user/staff"
-	headers := map[string]string{
-		"Content-Type": "application/json",
-		"x-api-key":    utilityV1.GetEnv("CAGABAY_API_KEY"),
+	fmt.Println(apiReq)
+
+	// 4. Marshal request body
+	body, err := json.Marshal(apiReq)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_301,
+			"Failed to marshal request body", err, http.StatusInternalServerError)
 	}
 
-	body, _ := json.Marshal(apiReq)
-	resp, err := httpRequestV1.SendRequest(apiURL, "POST", nil, body, headers, nil, 30)
+	// 5. Build HTTP request
+	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/v1/auth/user-management/register-new-user/staff"
+	
+	httpReq, err := http.NewRequest(http.MethodPost, apiURL, bytes.NewBuffer(body))
 	if err != nil {
 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_405,
-			"Request to external API failed", err, http.StatusInternalServerError)
+			"Failed to create HTTP request", err, http.StatusInternalServerError)
 	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", utilityV1.GetEnv("CAGABAY_API_KEY"))
 
-	// Unmarshal to typed struct
+	// 6. Execute HTTP request
+	client := &http.Client{Timeout: 30 * time.Second}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_405,
+			"External API call failed", err, http.StatusInternalServerError)
+	}
+	defer httpResp.Body.Close()
+
+	// 7. Read raw response
+	respBytes, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_310,
+			"Failed to read external API response", err, http.StatusInternalServerError)
+	}
+	log.Printf("External API Status: %d | Response: %s", httpResp.StatusCode, string(respBytes))
+
+	fmt.Sprintf(">>>>>>>>>>>", (httpResp.Body))
+
+	// 8. Unmarshal response
 	var apiResp mdlAuth.StaffRegistrationAPIResponse
-	respBytes, _ := json.Marshal(resp)
+
 	if err := json.Unmarshal(respBytes, &apiResp); err != nil {
 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_310,
 			"Failed to parse external API response", err, http.StatusInternalServerError)
 	}
+	fmt.Println(apiResp)
 
-	if apiResp.RetCode != "203" {
-		return helper.JSONResponseWithErrorV1(c, apiResp.RetCode,
-			apiResp.Data.Message, nil, http.StatusBadRequest)
+	// Reformat birthdate from "2000-12-27T00:00:00Z" → "2000-12-27"
+	if apiResp.Data != nil && apiResp.Data.Details != nil {
+		if apiResp.Data.Details.Birthdate != "" {
+			t, err := time.Parse(time.RFC3339, apiResp.Data.Details.Birthdate)
+			if err == nil {
+				apiResp.Data.Details.Birthdate = t.Format("2006-01-02")
+			}
+		}
 	}
 
-	// Hash password
-	// apiResp.Data.Details.Password, err = utilityV1.HashData(apiResp.Data.Details.Password)
-	// if err != nil {
-	// 	return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_500,
-	// 		"Failed to Hash Password", err, http.StatusInternalServerError)
-	// }
+	// 9. Check business logic RetCode
+	if apiResp.RetCode != "200" && apiResp.RetCode != "203" {
+		msg := "External Registration Failed"
+		if apiResp.Data != nil {
+			msg = apiResp.Data.Message
+		}
+		return helper.JSONResponseWithErrorV1(c, apiResp.RetCode, msg, nil, http.StatusBadRequest)
+	}
 
-	// Success: save to internal DB
-	result, err := scpAuth.RegisterUser(apiResp.Data.Details)
+	// 10. Guard against missing details
+	if apiResp.Data == nil || apiResp.Data.Details == nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_310,
+			"External API returned success but no user details", nil, http.StatusInternalServerError)
+	}
+
+	insertreq := apiResp.Data.Details
+
+	// Save plain password before hashing
+	plainPassword := insertreq.Password
+
+	if insertreq.Password != "" {
+		hashed, err := HashPassword(insertreq.Password)
+		if err != nil {
+			return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_500,
+				"Failed to hash password", err, http.StatusInternalServerError)
+		}
+		insertreq.Password = hashed
+	}
+
+	// 11. Save to internal DB (now stores hashed password)
+	result, err := scpAuth.RegisterUser(insertreq)
 	if err != nil {
 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_303,
 			"Inserting data failed", err, http.StatusInternalServerError)
 	}
 
-	// ✅ Send temp password email (with error handling)
-	go func() {
-		if err := hlpAuth.SendTempPasswordEmail(
-			apiResp.Data.Details.Email,
-			apiResp.Data.Details.Username,
-			apiResp.Data.Details.InstitutionCode,
-			apiResp.Data.Details.Password,
-		); err != nil {
-			// Optional: log the error (don't break user flow)
-			fmt.Println("Failed to send temp password email:", err)
-		}
+	// 12. Send temp password email (async) — use plain password
+	if apiResp.Data.Details.Email != "" {
+		emailDetails := *apiResp.Data.Details
+		go func(d mdlAuth.RegisterStaffResult, pwd string) {
+			if err := hlpAuth.SendTempPasswordEmail(
+				d.Email, d.Username, d.InstitutionCode, pwd,
+			); err != nil {
+				log.Printf("Async Email Failed: %v", err)
+			}
+		}(emailDetails, plainPassword)
+	}
 
-	}()
-
-	return helper.JSONResponseWithDataV1(c, apiResp.RetCode,
-		apiResp.Data.Message, result, http.StatusCreated)
+	return helper.JSONResponseWithDataV1(c, apiResp.RetCode, apiResp.Message, result, http.StatusCreated)
 }
+
+// func LoginUser(c fiber.Ctx) error {
+// 	var req mdlAuth.LoginRequest
+// 	if err := c.Bind().Body(&req); err != nil {
+// 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_301,
+// 			"Parsing request body failed", err, http.StatusBadRequest)
+// 	}
+
+// 	// Call external login API
+// 	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/v1/auth/user-logs/login"
+
+// 	headers := map[string]string{
+// 		"Content-Type": "application/json",
+// 		"x-api-key":    utilityV1.GetEnv("CAGABAY_API_KEY"),
+// 	}
+
+// 	body, _ := json.Marshal(req)
+// 	resp, err := httpRequestV1.SendRequest(apiURL, "POST", nil, body, headers, nil, 30)
+// 	if err != nil {
+// 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_405,
+// 			"Request to external API failed", err, http.StatusInternalServerError)
+// 	}
+
+// 	// Unmarshal to typed struct
+// 	var apiResp mdlAuth.LoginAPIResponse
+// 	respBytes, _ := json.Marshal(resp)
+// 	if err := json.Unmarshal(respBytes, &apiResp); err != nil {
+// 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_310,
+// 			"Failed to parse external API response", err, http.StatusInternalServerError)
+// 	}
+
+// 	if apiResp.RetCode != "201" {
+// 		return helper.JSONResponseWithErrorV1(c, apiResp.RetCode,
+// 			apiResp.Data.Message, nil, http.StatusBadRequest)
+// 	}
+
+// 	// Check if user exists in DB
+// 	userID, err := scpAuth.GetUserIDByEmail(apiResp.Data.Details.Email)
+// 	if err != nil || userID == 0 {
+// 		return helper.JSONResponseWithDataV1(c, respcode.ERR_CODE_404, "User not found in DB", nil, http.StatusNotFound)
+// 	}
+// 	apiResp.Data.Details.UserID = userID
+
+// 	// Update internal DB (last_login, is_active)
+// 	if err := scpAuth.LoginUser(apiResp.Data.Details); err != nil {
+// 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_303,
+// 			"Failed to update login state", err, http.StatusInternalServerError)
+// 	}
+
+// 	// Success: return user login details
+// 	return helper.JSONResponseWithDataV1(c, apiResp.RetCode,
+// 		apiResp.Data.Message, apiResp.Data.Details, http.StatusOK)
+// }
 
 func LoginUser(c fiber.Ctx) error {
 	var req mdlAuth.LoginRequest
@@ -106,14 +258,49 @@ func LoginUser(c fiber.Ctx) error {
 			"Parsing request body failed", err, http.StatusBadRequest)
 	}
 
+	// Validate required fields
+	if req.UserIdentity == "" || req.Password == "" {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_400,
+			"User identity and password are required", nil, http.StatusBadRequest)
+	}
+
+	// First, get user from local database to get institution_code
+	user, err := scpAuth.GetUserByIdentity(req.UserIdentity)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_404,
+			"User not found", err, http.StatusNotFound)
+	}
+
+	// Check if user account is active
+	if user.IsActive {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_400,
+			"User is already logged in", nil, http.StatusConflict)
+	}
+
+	// Build login request with institution_code from local DB
+	loginReq := mdlAuth.LoginRequest{
+		UserIdentity:    req.UserIdentity,
+		Password:        req.Password,
+		InstitutionCode: user.InstitutionCode,
+	}
+
 	// Call external login API
-	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/helper/auth/user-logs/login"
+	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/v1/auth/user-logs/login"
+
 	headers := map[string]string{
 		"Content-Type": "application/json",
 		"x-api-key":    utilityV1.GetEnv("CAGABAY_API_KEY"),
 	}
 
-	body, _ := json.Marshal(req)
+	body, err := json.Marshal(loginReq)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_310,
+			"Failed to marshal login request", err, http.StatusInternalServerError)
+	}
+
+	log.Printf("Login Request URL: %s", apiURL)
+	log.Printf("Login Request Body: %s", string(body))
+
 	resp, err := httpRequestV1.SendRequest(apiURL, "POST", nil, body, headers, nil, 30)
 	if err != nil {
 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_405,
@@ -122,34 +309,175 @@ func LoginUser(c fiber.Ctx) error {
 
 	// Unmarshal to typed struct
 	var apiResp mdlAuth.LoginAPIResponse
-	respBytes, _ := json.Marshal(resp)
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_310,
+			"Failed to marshal external API response", err, http.StatusInternalServerError)
+	}
+
+	log.Printf("External API Response: %s", string(respBytes))
+
 	if err := json.Unmarshal(respBytes, &apiResp); err != nil {
 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_310,
 			"Failed to parse external API response", err, http.StatusInternalServerError)
 	}
 
 	if apiResp.RetCode != "201" {
-		return helper.JSONResponseWithErrorV1(c, apiResp.RetCode,
-			apiResp.Data.Message, nil, http.StatusBadRequest)
+		errMsg := "Login failed"
+		if apiResp.Data != nil && apiResp.Data.Message != "" {
+			errMsg = apiResp.Data.Message
+		}
+		return helper.JSONResponseWithErrorV1(c, apiResp.RetCode, errMsg, nil, http.StatusBadRequest)
 	}
 
-	// Check if user exists in DB
-	userID, err := scpAuth.GetUserIDByEmail(apiResp.Data.Details.Email)
-	if err != nil || userID == 0 {
-		return helper.JSONResponseWithDataV1(c, respcode.ERR_CODE_404, "User not found in DB", nil, http.StatusNotFound)
-	}
-	apiResp.Data.Details.UserID = userID
-
-	// Update internal DB (last_login, is_active)
-	if err := scpAuth.LoginUser(apiResp.Data.Details); err != nil {
-		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_303,
-			"Failed to update login state", err, http.StatusInternalServerError)
+	// Safely check if Data and Details exist
+	if apiResp.Data == nil || apiResp.Data.Details == nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_310,
+			"External API returned success but no user details", nil, http.StatusInternalServerError)
 	}
 
-	// Success: return user login details
+	// Check if password is temporary (contains "T3mpP")
+	if strings.Contains(req.Password, "T3mpP") {
+		log.Printf("Temporary password detected for user: %s", apiResp.Data.Details.Username)
+
+		return helper.JSONResponseWithDataV1(c, "PWD_RESET_REQUIRED",
+			"Temporary password detected. Please change your password.",
+			map[string]interface{}{
+				"username":                apiResp.Data.Details.Username,
+				"staff_id":                apiResp.Data.Details.StaffID,
+				"email":                   apiResp.Data.Details.Email,
+				"token":                   apiResp.Data.Details.Token,
+				"requires_password_reset": true,
+			}, http.StatusOK)
+	}
+
+	// Update user information from login response
+	if err := scpAuth.UpdateUserFromLogin(apiResp.Data.Details); err != nil {
+		log.Printf("Failed to update user info: %v", err)
+	}
+
+	// Update login state in local DB
+	if err := scpAuth.UpdateUserLogin(user.ID); err != nil {
+		log.Printf("Failed to update login state: %v", err)
+	}
+
+	// Fetch user with navigation using the username
+	userWithNav, err := scpAuth.GetUserWithNavigation(apiResp.Data.Details.Username)
+	if err != nil {
+		log.Printf("Failed to fetch user with navigation: %v", err)
+		userWithNav = &mdlAuth.UserWithNavigationResponse{
+			Email:      apiResp.Data.Details.Email,
+			FirstName:  apiResp.Data.Details.FirstName,
+			MiddleName: apiResp.Data.Details.MiddleName,
+			LastName:   apiResp.Data.Details.LastName,
+			StaffID:    apiResp.Data.Details.StaffID,
+			RoleID:     user.RoleID,
+			RoleName:   "",
+			Navigation: []interface{}{},
+		}
+	}
+
+	// Prepare login response
+	loginResponse := &mdlAuth.LoginResponseData{
+		Token: apiResp.Data.Details.Token,
+		User:  userWithNav,
+	}
+
 	return helper.JSONResponseWithDataV1(c, apiResp.RetCode,
-		apiResp.Data.Message, apiResp.Data.Details, http.StatusOK)
+		"Login successful", loginResponse, http.StatusOK)
 }
+
+// func LogoutUser(c fiber.Ctx) error {
+// 	var req mdlAuth.LogoutRequest
+// 	if err := c.Bind().Body(&req); err != nil {
+// 		return helper.JSONResponseWithErrorV1(
+// 			c,
+// 			respcode.ERR_CODE_301,
+// 			"Parsing request body failed",
+// 			err,
+// 			http.StatusBadRequest,
+// 		)
+// 	}
+
+// 	// Call external logout API
+// 	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") +
+// 		"/soteria-go/api/public/v1/auth/user-logs/logout"
+
+// 	headers := map[string]string{
+// 		"Content-Type": "application/json",
+// 		"x-api-key":    utilityV1.GetEnv("CAGABAY_API_KEY"),
+// 	}
+
+// 	body, _ := json.Marshal(req)
+// 	resp, err := httpRequestV1.SendRequest(apiURL, "POST", nil, body, headers, nil, 30)
+// 	if err != nil {
+// 		return helper.JSONResponseWithErrorV1(
+// 			c,
+// 			respcode.ERR_CODE_405,
+// 			"Request to external API failed",
+// 			err,
+// 			http.StatusInternalServerError,
+// 		)
+// 	}
+
+// 	// Parse external API response
+// 	var apiResp mdlAuth.LogoutAPIResponse
+// 	respBytes, _ := json.Marshal(resp)
+// 	if err := json.Unmarshal(respBytes, &apiResp); err != nil {
+// 		return helper.JSONResponseWithErrorV1(
+// 			c,
+// 			respcode.ERR_CODE_310,
+// 			"Failed to parse external API response",
+// 			err,
+// 			http.StatusInternalServerError,
+// 		)
+// 	}
+
+// 	// Handle non-success logout
+// 	if apiResp.RetCode != "202" {
+// 		return helper.JSONResponseWithErrorV1(
+// 			c,
+// 			apiResp.RetCode,
+// 			apiResp.Data.Message,
+// 			nil,
+// 			http.StatusBadRequest,
+// 		)
+// 	}
+
+// 	// Get internal user ID by email
+// 	userID, err := scpAuth.GetUserIDByEmail(apiResp.Data.Details.Email)
+// 	if err != nil || userID == 0 {
+// 		return helper.JSONResponseWithDataV1(
+// 			c,
+// 			respcode.ERR_CODE_404,
+// 			"User not found in DB",
+// 			nil,
+// 			http.StatusNotFound,
+// 		)
+// 	}
+
+// 	apiResp.Data.Details.UserID = userID
+
+// 	// Update internal DB (set inactive, clear login state)
+// 	if err := scpAuth.LogoutUser(userID); err != nil {
+// 		return helper.JSONResponseWithErrorV1(
+// 			c,
+// 			respcode.ERR_CODE_303,
+// 			"Failed to update logout state",
+// 			err,
+// 			http.StatusInternalServerError,
+// 		)
+// 	}
+
+// 	// Success response
+// 	return helper.JSONResponseWithDataV1(
+// 		c,
+// 		apiResp.RetCode,
+// 		apiResp.Data.Message,
+// 		apiResp.Data.Details,
+// 		http.StatusOK,
+// 	)
+// }
 
 func LogoutUser(c fiber.Ctx) error {
 	var req mdlAuth.LogoutRequest
@@ -163,67 +491,72 @@ func LogoutUser(c fiber.Ctx) error {
 		)
 	}
 
+	// Validate required fields
+	if req.UserIdentity == "" {
+		return helper.JSONResponseWithErrorV1(
+			c,
+			respcode.ERR_CODE_400,
+			"User identity (email/username/staff_id) is required",
+			nil,
+			http.StatusBadRequest,
+		)
+	}
+
+	// Get user from local DB first to get email for external API
+	user, err := scpAuth.GetUserByIdentity(req.UserIdentity)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(
+			c,
+			respcode.ERR_CODE_404,
+			"User not found in local database",
+			err,
+			http.StatusNotFound,
+		)
+	}
+
+	// Prepare logout request for external API
+	logoutReq := mdlAuth.LogoutRequest{
+		UserIdentity:    user.Email, // Use email for external API
+		InstitutionCode: req.InstitutionCode,
+	}
+
 	// Call external logout API
 	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") +
-		"/soteria-go/api/public/helper/auth/user-logs/logout"
+		"/soteria-go/api/public/v1/auth/user-logs/logout"
 
 	headers := map[string]string{
 		"Content-Type": "application/json",
 		"x-api-key":    utilityV1.GetEnv("CAGABAY_API_KEY"),
 	}
 
-	body, _ := json.Marshal(req)
+	body, _ := json.Marshal(logoutReq)
+
+	log.Printf("Logout Request URL: %s", apiURL)
+	log.Printf("Logout Request Body: %s", string(body))
+
 	resp, err := httpRequestV1.SendRequest(apiURL, "POST", nil, body, headers, nil, 30)
 	if err != nil {
-		return helper.JSONResponseWithErrorV1(
-			c,
-			respcode.ERR_CODE_405,
-			"Request to external API failed",
-			err,
-			http.StatusInternalServerError,
-		)
+		log.Printf("External API Error: %v", err)
+		// Continue with local logout even if external API fails
 	}
 
-	// Parse external API response
+	// Parse external API response if available
 	var apiResp mdlAuth.LogoutAPIResponse
-	respBytes, _ := json.Marshal(resp)
-	if err := json.Unmarshal(respBytes, &apiResp); err != nil {
-		return helper.JSONResponseWithErrorV1(
-			c,
-			respcode.ERR_CODE_310,
-			"Failed to parse external API response",
-			err,
-			http.StatusInternalServerError,
-		)
-	}
+	if resp != nil {
+		respBytes, _ := json.Marshal(resp)
+		log.Printf("External API Response: %s", string(respBytes))
 
-	// Handle non-success logout
-	if apiResp.RetCode != "202" {
-		return helper.JSONResponseWithErrorV1(
-			c,
-			apiResp.RetCode,
-			apiResp.Data.Message,
-			nil,
-			http.StatusBadRequest,
-		)
+		if err := json.Unmarshal(respBytes, &apiResp); err == nil {
+			// Check if external logout was successful
+			if apiResp.RetCode != "202" {
+				log.Printf("External logout failed with code: %s, message: %s", apiResp.RetCode, apiResp.Message)
+				// Continue with local logout anyway
+			}
+		}
 	}
-
-	// Get internal user ID by email
-	userID, err := scpAuth.GetUserIDByEmail(apiResp.Data.Details.Email)
-	if err != nil || userID == 0 {
-		return helper.JSONResponseWithDataV1(
-			c,
-			respcode.ERR_CODE_404,
-			"User not found in DB",
-			nil,
-			http.StatusNotFound,
-		)
-	}
-
-	apiResp.Data.Details.UserID = userID
 
 	// Update internal DB (set inactive, clear login state)
-	if err := scpAuth.LogoutUser(userID); err != nil {
+	if err := scpAuth.LogoutUser(user.ID); err != nil {
 		return helper.JSONResponseWithErrorV1(
 			c,
 			respcode.ERR_CODE_303,
@@ -236,9 +569,15 @@ func LogoutUser(c fiber.Ctx) error {
 	// Success response
 	return helper.JSONResponseWithDataV1(
 		c,
-		apiResp.RetCode,
-		apiResp.Data.Message,
-		apiResp.Data.Details,
+		respcode.SUC_CODE_200,
+		"Logout successful",
+		map[string]interface{}{
+			"user_id":   user.ID,
+			"username":  user.Username,
+			"staff_id":  user.StaffID,
+			"email":     user.Email,
+			"logout_at": time.Now().Format(time.RFC3339),
+		},
 		http.StatusOK,
 	)
 }
@@ -251,14 +590,36 @@ func ChangeTempPassword(c fiber.Ctx) error {
 			"Parsing request body failed", err, http.StatusBadRequest)
 	}
 
+	// Validate required fields
+	if req.Username == "" || req.NewPassword == "" {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_400,
+			"Username and new password are required", nil, http.StatusBadRequest)
+	}
+
+	// Get user from local database to get institution_code
+	user, err := scpAuth.GetUserByIdentity(req.Username)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_404,
+			"User not found in local database", err, http.StatusNotFound)
+	}
+
+	// Build change password request with institution_code
+	changeReq := mdlAuth.ChangePasswordRequest{
+		Username:        req.Username,
+		NewPassword:     req.NewPassword,
+		InstitutionCode: user.InstitutionCode,
+	}
+
 	// External API call
-	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/helper/auth/security-management/change-password"
+	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/v1/auth/security-management/change-password"
+
 	headers := map[string]string{
 		"Content-Type": "application/json",
 		"x-api-key":    utilityV1.GetEnv("CAGABAY_API_KEY"),
 	}
 
-	body, _ := json.Marshal(req)
+	body, _ := json.Marshal(changeReq)
+
 	resp, err := httpRequestV1.SendRequest(apiURL, "POST", nil, body, headers, nil, 30)
 	if err != nil {
 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_405,
@@ -274,18 +635,32 @@ func ChangeTempPassword(c fiber.Ctx) error {
 	}
 
 	if apiResp.RetCode != "203" {
-		return helper.JSONResponseWithErrorV1(c, apiResp.RetCode,
-			apiResp.Data.Message, nil, http.StatusBadRequest)
+		errMsg := "Password change failed"
+		if apiResp.Data != nil && apiResp.Data.Message != "" {
+			errMsg = apiResp.Data.Message
+		}
+		return helper.JSONResponseWithErrorV1(c, apiResp.RetCode, errMsg, nil, http.StatusBadRequest)
 	}
 
-	// Update local DB
-	if err := scpAuth.ChangeTempPassword(apiResp.Data.Details); err != nil {
+	// Hash the new password before storing locally
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_500,
+			"Failed to hash password", err, http.StatusInternalServerError)
+	}
+
+	// Update local DB with hashed password
+	if err := scpAuth.ChangeTempPassword(user.ID, string(hashedPassword)); err != nil {
 		return helper.JSONResponseWithErrorV1(c, respcode.ERR_CODE_303,
 			"Failed to update password locally", err, http.StatusInternalServerError)
 	}
 
+	// Return success without auto-login
 	return helper.JSONResponseWithDataV1(c, apiResp.RetCode,
-		apiResp.Data.Message, apiResp.Data.Details, http.StatusOK)
+		"Password changed successfully. Please login with your new password.",
+		map[string]interface{}{
+			"username": req.Username,
+		}, http.StatusOK)
 }
 
 func DeleteUser(c fiber.Ctx) error {
@@ -304,7 +679,7 @@ func DeleteUser(c fiber.Ctx) error {
 	}
 
 	// Call external API
-	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/helper/auth/user-management/delete-user"
+	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") + "/soteria-go/api/public/v1/auth/user-management/delete-user"
 	headers := map[string]string{
 		"Content-Type":  "application/json",
 		"x-api-key":     utilityV1.GetEnv("CAGABAY_API_KEY"),
@@ -360,7 +735,7 @@ func UpdateUser(c fiber.Ctx) error {
 
 	// Call external API
 	apiURL := utilityV1.GetEnv("CAGABAY_BASE_URL") +
-		"/soteria-go/api/public/helper/auth/user-management/update-user/staff/" + username
+		"/soteria-go/api/public/v1/auth/user-management/update-user/staff/" + username
 
 	headers := map[string]string{
 		"Content-Type":  "application/json",

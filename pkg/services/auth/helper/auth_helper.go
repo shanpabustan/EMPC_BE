@@ -7,13 +7,21 @@ import (
 	utils_v1 "github.com/FDSAP-Git-Org/hephaestus/utils/v1"
 )
 
+const (
+	empcGreen     = "#0f4a2b"
+	empcGreenDark = "#0f4a2b"
+	empcName      = "EMPC Portfolio Management System"
+	empcShort     = "EMPC"
+	empcYear      = "2025"
+)
+
 func SendTempPasswordEmail(toEmail, username, instiCode, tempPassword string) error {
 	from := utils_v1.GetEnv("SMTP_USER")
 	smtpHost := utils_v1.GetEnv("SMTP_HOST")
 	password := utils_v1.GetEnv("SMTP_PASS")
 	smtpPort := utils_v1.GetEnv("SMTP_PORT")
 
-	subject := "Subject: Welcome to iProvidence - Your Account is Ready\r\n"
+	subject := "Subject: Welcome to EMPC - Your Account is Ready\r\n"
 	mime := "MIME-version: 1.0;\r\nContent-Type: text/html; charset=\"UTF-8\";\r\n\r\n"
 
 	htmlBody := fmt.Sprintf(`
@@ -24,22 +32,22 @@ func SendTempPasswordEmail(toEmail, username, instiCode, tempPassword string) er
 </head>
 <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;">
-    
-    <div style="background:#2563eb;color:#ffffff;padding:20px;text-align:center;">
-      <h1 style="margin:0;font-size:22px;">Welcome to iProvidence</h1>
+
+    <div style="background:%s;color:#ffffff;padding:20px;text-align:center;">
+      <h1 style="margin:0;font-size:22px;">Welcome to %s</h1>
     </div>
 
     <div style="padding:20px;color:#111827;font-size:14px;line-height:1.6;">
       <p>Hi <strong>%s</strong>,</p>
 
-      <p>Welcome to <strong>iProvidence</strong>, your platform for KPI tracking and performance management. Your account has been successfully created and is ready for use.</p>
+      <p>Welcome to <strong>%s</strong>, your platform for designed to manage the retirement funds, member savings, and diversified loan portfolios. Your account has been successfully created and is ready for use.</p>
 
       <p>Below are your temporary login credentials:</p>
 
-      <div style="background:#f3f4f6;padding:16px;border-radius:6px;margin:15px 0;border-left:4px solid #2563eb;">
+      <div style="background:#f3f4f6;padding:16px;border-radius:6px;margin:15px 0;border-left:4px solid %s;">
         <p style="margin:0;"><strong>Username:</strong> %s</p>
         <p style="margin:0;"><strong>Institution Code:</strong> %s</p>
-		  <p style="margin:0;"><strong>Temporary Password:</strong> %s</p>
+        <p style="margin:0;"><strong>Temporary Password:</strong> %s</p>
       </div>
 
       <div style="background:#fef3c7;padding:12px;border-radius:4px;margin:15px 0;border:1px solid #f59e0b;">
@@ -48,32 +56,31 @@ func SendTempPasswordEmail(toEmail, username, instiCode, tempPassword string) er
         </p>
       </div>
 
-      <p style="margin-top:20px;">Thank you,<br><strong>The iProvidence Team</strong></p>
+      <p style="margin-top:20px;">Thank you,<br><strong>The %s Team</strong></p>
     </div>
 
     <div style="background:#f9fafb;text-align:center;padding:15px;font-size:12px;color:#6b7280;">
-      <p style="margin:0;">© 2025 iProvidence. Streamlining performance management.</p>
+      <p style="margin:0;">© %s %s. Streamlining performance management.</p>
     </div>
 
   </div>
 </body>
 </html>
-`, username, username, instiCode, tempPassword)
+`,
+		empcGreen, empcShort,
+		username,
+		empcName,
+		empcGreen,
+		username, instiCode, tempPassword,
+		empcShort,
+		empcYear, empcShort,
+	)
 
 	message := []byte(subject + mime + htmlBody)
-
 	auth := smtp.PlainAuth("", from, password, smtpHost)
-
-	return smtp.SendMail(
-		smtpHost+":"+smtpPort,
-		auth,
-		from,
-		[]string{toEmail},
-		message,
-	)
+	return smtp.SendMail(smtpHost+":"+smtpPort, auth, from, []string{toEmail}, message)
 }
 
-// SendPasswordResetEmail sends password reset link email
 func SendPasswordResetEmail(toEmail, resetToken string) error {
 	from := utils_v1.GetEnv("SMTP_USER")
 	smtpHost := utils_v1.GetEnv("SMTP_HOST")
@@ -82,12 +89,12 @@ func SendPasswordResetEmail(toEmail, resetToken string) error {
 
 	appBaseURL := utils_v1.GetEnv("APP_BASE_URL")
 	if appBaseURL == "" {
-		appBaseURL = "http://localhost:3000" // fallback
+		appBaseURL = "http://localhost:3000"
 	}
 
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", appBaseURL, resetToken)
 
-	subject := "Subject: iProvidence - Password Reset Request\r\n"
+	subject := "Subject: EMPC - Password Reset Request\r\n"
 	mime := "MIME-version: 1.0;\r\nContent-Type: text/html; charset=\"UTF-8\";\r\n\r\n"
 
 	htmlBody := fmt.Sprintf(`
@@ -98,18 +105,18 @@ func SendPasswordResetEmail(toEmail, resetToken string) error {
 </head>
 <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;">
-    
-    <div style="background:#dc2626;color:#ffffff;padding:20px;text-align:center;">
+
+    <div style="background:%s;color:#ffffff;padding:20px;text-align:center;">
       <h1 style="margin:0;font-size:22px;">Password Reset Request</h1>
     </div>
 
     <div style="padding:20px;color:#111827;font-size:14px;line-height:1.6;">
-      <p>We received a request to reset your password for your iProvidence account.</p>
+      <p>We received a request to reset your password for your <strong>%s</strong> account.</p>
 
       <p>Click the button below to reset your password:</p>
 
       <div style="text-align:center;margin:25px 0;">
-        <a href="%s" style="background-color:#dc2626;color:#ffffff;padding:12px 30px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
+        <a href="%s" style="background-color:%s;color:#ffffff;padding:12px 30px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
           Reset Password
         </a>
       </div>
@@ -125,34 +132,33 @@ func SendPasswordResetEmail(toEmail, resetToken string) error {
         </p>
       </div>
 
-      <div style="background:#f0fdf4;padding:12px;border-radius:4px;margin:15px 0;border:1px solid #22c55e;">
+      <div style="background:#f0fdf4;padding:12px;border-radius:4px;margin:15px 0;border:1px solid %s;">
         <p style="margin:0;color:#166534;">
           <strong>Security Tip:</strong> If you didn't request this reset, please ignore this email. Your account remains secure.
         </p>
       </div>
 
-      <p style="margin-top:20px;">Thank you,<br><strong>The iProvidence Team</strong></p>
+      <p style="margin-top:20px;">Thank you,<br><strong>The %s Team</strong></p>
     </div>
 
     <div style="background:#f9fafb;text-align:center;padding:15px;font-size:12px;color:#6b7280;">
-      <p style="margin:0;">© 2025 iProvidence. Streamlining performance management.</p>
+      <p style="margin:0;">© %s %s. Streamlining performance management.</p>
     </div>
 
   </div>
 </body>
 </html>
-`, resetLink, resetLink)
+`,
+		empcGreen,
+		empcShort,
+		resetLink, empcGreen,
+		resetLink,
+		empcGreen,
+		empcShort,
+		empcYear, empcShort,
+	)
 
 	message := []byte(subject + mime + htmlBody)
-
 	auth := smtp.PlainAuth("", from, password, smtpHost)
-
-	return smtp.SendMail(
-		smtpHost+":"+smtpPort,
-		auth,
-		from,
-		[]string{toEmail},
-		message,
-	)
+	return smtp.SendMail(smtpHost+":"+smtpPort, auth, from, []string{toEmail}, message)
 }
-

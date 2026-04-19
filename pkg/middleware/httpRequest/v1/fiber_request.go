@@ -75,5 +75,7 @@ func SendRequest(uri, method string, pathParams []string, body []byte, headers m
 	}
 
 	// If both parsing attempts fail, return the raw response body as a string
-	return nil, fmt.Errorf("response is neither a JSON object nor a JSON array: %s", string(body))
+	//return nil, fmt.Errorf("response is neither a JSON object nor a JSON array: %s", string(body))
+	// Return respBody so the caller can still use the raw response
+	return string(respBody), fmt.Errorf("response is neither a JSON object nor a JSON array: %s", string(respBody))
 }

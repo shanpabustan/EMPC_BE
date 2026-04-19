@@ -12,20 +12,68 @@ import (
 	config "EMPC_BE/pkg/config"
 )
 
+// func RegisterUser(data *mdlAuth.RegisterStaffResult) (*mdlAuth.RegisterStaffResult, error) {
+// 	dataJSON, _ := json.Marshal(data)
+// 	var result mdlAuth.RegisterStaffResult
+// 	var dbResult string
+
+// 	err := config.DBConnList[0].Debug().Raw(
+// 		`SELECT register_user($1)`, string(dataJSON),
+// 	).Scan(&dbResult).Error
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	if err := json.Unmarshal([]byte(dbResult), &result); err != nil {
+// 		return nil, err
+// 	}
+
+// 	return &result, nil
+// }
+
 func RegisterUser(data *mdlAuth.RegisterStaffResult) (*mdlAuth.RegisterStaffResult, error) {
-	dataJSON, _ := json.Marshal(data)
-	var result mdlAuth.RegisterStaffResult
 	var dbResult string
 
-	err := config.DBConnList[0].Debug().Raw(
-		`SELECT register_user($1)`, string(dataJSON),
-	).Scan(&dbResult).Error
+	sqlDB, err := config.DBConnList[0].DB()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get sql.DB: %w", err)
 	}
 
+	err = sqlDB.QueryRow(`
+		SELECT register_user(
+			$1,  -- username
+			$2,  -- staff_id
+			$3,  -- first_name
+			$4,  -- middle_name
+			$5,  -- last_name
+			$6,  -- email
+			$7,  -- phone_no
+			$8,  -- birthdate
+			$9,  -- password
+			$10, -- institution_id
+			$11, -- institution_code
+			$12  -- institution_name
+		)`,
+		data.Username,
+		data.StaffID,
+		data.FirstName,
+		data.MiddleName,
+		data.LastName,
+		data.Email,
+		data.PhoneNo,
+		data.Birthdate,
+		data.Password,
+		data.InstitutionID,
+		data.InstitutionCode,
+		data.InstitutionName,
+	).Scan(&dbResult)
+	if err != nil {
+		return nil, fmt.Errorf("register_user failed: %w", err)
+	}
+
+	var result mdlAuth.RegisterStaffResult
 	if err := json.Unmarshal([]byte(dbResult), &result); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal db result: %w", err)
 	}
 
 	return &result, nil
@@ -48,36 +96,108 @@ func LoginUser(data *mdlAuth.LoginResult) error {
 	).Error
 }
 
-func LogoutUser(userId int) error {
-	// Plain SQL query
+// func LogoutUser(userId int) error {
+// 	// Plain SQL query
+// 	query := `
+// 		UPDATE users
+// 		SET is_active = $1
+// 		WHERE id = $2
+// 	`
+
+// 	return config.DBConnList[0].Exec(
+// 		query,
+// 		false,
+// 		userId,
+// 	).Error
+// }
+
+// script/auth.go
+func LogoutUser(userID int) error {
 	query := `
 		UPDATE users
-		SET is_active = $1
+		SET is_active = false,
+		    updated_at = NOW()
+		WHERE id = $1
+	`
+
+	result := config.DBConnList[0].Exec(query, userID)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update logout state: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user with ID %d not found", userID)
+	}
+
+	return nil
+}
+
+// script/auth.go
+func GetUserByIdentity(identity string) (*mdlAuth.User, error) {
+	var user mdlAuth.User
+
+	// Try to find user by email, username, or staff_id
+	query := `
+		SELECT 
+			u.id, 
+			u.username, 
+			u.staff_id, 
+			u.first_name, 
+			u.middle_name, 
+			u.last_name, 
+			u.email, 
+			u.phone_no, 
+			u.birthdate,
+			u.role_id,
+			u.is_active,
+			u.requires_password_reset,
+			u.institution_id,
+			u.institution_code,
+			u.institution_name,
+			COALESCE(r.role_name, '') as role_name
+		FROM users u
+		LEFT JOIN sys_roles r ON u.role_id = r.id
+		WHERE (u.email = $1 OR u.username = $1 OR u.staff_id = $1) 
+		AND u.deleted_at IS NULL
+		LIMIT 1
+	`
+
+	err := config.DBConnList[0].Raw(query, identity).Scan(&user).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user by identity: %w", err)
+	}
+
+	if user.ID == 0 {
+		return nil, fmt.Errorf("user not found with identity: %s", identity)
+	}
+
+	return &user, nil
+}
+
+// script/auth.go - Update this function
+
+func ChangeTempPassword(userID int, hashedPassword string) error {
+	db := config.DBConnList[0]
+
+	query := `
+		UPDATE users 
+		SET password = $1, 
+		    requires_password_reset = false, 
+		    last_password_reset = NOW(),
+		    updated_at = NOW()
 		WHERE id = $2
 	`
 
-	return config.DBConnList[0].Exec(
-		query,
-		false,
-		userId,
-	).Error
-}
+	result := db.Exec(query, hashedPassword, userID)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update password: %w", result.Error)
+	}
 
-func ChangeTempPassword(data *mdlAuth.ChangePasswordResult) error {
-	query := `
-		UPDATE users
-		SET password = $1,
-		    requires_password_reset = false,
-		    last_password_reset = NOW(),
-		    updated_at = NOW()
-		WHERE email = $2
-	`
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user with ID %d not found", userID)
+	}
 
-	return config.DBConnList[0].Exec(
-		query,
-		data.Password,
-		data.Email,
-	).Error
+	return nil
 }
 
 func DeleteUserByIdentity(userIdentity string) error {
@@ -274,21 +394,21 @@ func GetUserDetailsByEmail(email string) (string, string, error) {
 // HELPER FUNCTIONS
 ////////////////////////////////////
 
-func GetUserIDByEmail(email string) (int, error) {
-	var userID int
-	query := `
-		SELECT id
-		FROM users
-		WHERE email = ? AND deleted_at IS NULL
-		LIMIT 1
-	`
-	err := config.DBConnList[0].Raw(query, email).Scan(&userID).Error
-	if err != nil {
-		return 0, err
-	}
+// func GetUserIDByEmail(email string) (int, error) {
+// 	var userID int
+// 	query := `
+// 		SELECT id
+// 		FROM users
+// 		WHERE email = ? AND deleted_at IS NULL
+// 		LIMIT 1
+// 	`
+// 	err := config.DBConnList[0].Raw(query, email).Scan(&userID).Error
+// 	if err != nil {
+// 		return 0, err
+// 	}
 
-	return userID, nil
-}
+// 	return userID, nil
+// }
 
 // Shortest possible version
 func GetUserByUsername(username string) (*mdlAuth.UserWithPermissions, error) {
@@ -309,4 +429,176 @@ func GetUserByUsername(username string) (*mdlAuth.UserWithPermissions, error) {
 	}
 
 	return &user, nil
+}
+
+func GetUserWithNavigation(username string) (*mdlAuth.UserWithNavigationResponse, error) {
+	db := config.DBConnList[0]
+
+	var jsonStr string
+	if err := db.Raw(`SELECT get_user_with_navigation($1)::text`, username).Scan(&jsonStr).Error; err != nil {
+		return nil, fmt.Errorf("failed to get user with navigation: %w", err)
+	}
+
+	if jsonStr == "" || jsonStr == "null" {
+		return nil, fmt.Errorf("user not found: %s", username)
+	}
+
+	var user mdlAuth.UserWithNavigationResponse
+	if err := json.Unmarshal([]byte(jsonStr), &user); err != nil {
+		return nil, fmt.Errorf("failed to parse user data: %w", err)
+	}
+
+	return &user, nil
+}
+
+func GetOrCreateUserFromLogin(loginDetails *mdlAuth.LoginResult) (*mdlAuth.User, error) {
+	db := config.DBConnList[0]
+
+	var user mdlAuth.User
+
+	// Try to find user by staff_id or email
+	query := `
+		SELECT id, staff_id, username, email, first_name, middle_name, last_name, role_id
+		FROM users 
+		WHERE staff_id = $1 OR email = $2
+		LIMIT 1
+	`
+
+	err := db.Raw(query, loginDetails.StaffID, loginDetails.Email).Scan(&user).Error
+	if err != nil && err.Error() != "record not found" {
+		return nil, fmt.Errorf("failed to check existing user: %w", err)
+	}
+
+	// If user exists, return it
+	if user.ID > 0 {
+		return &user, nil
+	}
+
+	// Create new user from login details
+	insertQuery := `
+		INSERT INTO users (
+			staff_id, username, email, first_name, middle_name, last_name,
+			institution_id, institution_code, institution_name, is_active, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, NOW(), NOW())
+		RETURNING id, staff_id, username, email, first_name, middle_name, last_name, role_id
+	`
+
+	err = db.Raw(insertQuery,
+		loginDetails.StaffID,
+		loginDetails.Username,
+		loginDetails.Email,
+		loginDetails.FirstName,
+		loginDetails.MiddleName,
+		loginDetails.LastName,
+		loginDetails.InstitutionID,
+		loginDetails.InstitutionCode,
+		loginDetails.InstitutionName,
+	).Scan(&user).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	return &user, nil
+}
+
+// UpdateUserLogin updates user's login timestamp
+func UpdateUserLogin(userID int) error {
+	db := config.DBConnList[0]
+
+	query := `
+		UPDATE users 
+		SET last_login = NOW(), 
+		    is_active = true,
+		    updated_at = NOW()
+		WHERE id = $1
+	`
+
+	result := db.Exec(query, userID)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update user login: %w", result.Error)
+	}
+
+	return nil
+}
+
+// GetUserIDByEmail gets user ID by email (keep for backward compatibility)
+func GetUserIDByEmail(email string) (int, error) {
+	db := config.DBConnList[0]
+
+	var userID int
+	query := `SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL`
+
+	err := db.Raw(query, email).Scan(&userID).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to get user ID: %w", err)
+	}
+
+	if userID == 0 {
+		return 0, fmt.Errorf("user not found with email: %s", email)
+	}
+
+	return userID, nil
+}
+
+// script/auth.go - Add this function
+
+func UpdateUserFromLogin(loginDetails *mdlAuth.LoginResult) error {
+	db := config.DBConnList[0]
+
+	query := `
+		UPDATE users 
+		SET first_name = $1,
+		    middle_name = $2,
+		    last_name = $3,
+		    email = $4,
+		    phone_no = $5,
+		    institution_id = $6,
+		    institution_code = $7,
+		    institution_name = $8,
+		    username = $9,
+		    updated_at = NOW()
+		WHERE staff_id = $10 OR email = $4
+	`
+
+	result := db.Exec(query,
+		loginDetails.FirstName,
+		loginDetails.MiddleName,
+		loginDetails.LastName,
+		loginDetails.Email,
+		loginDetails.PhoneNo,
+		loginDetails.InstitutionID,
+		loginDetails.InstitutionCode,
+		loginDetails.InstitutionName,
+		loginDetails.Username,
+		loginDetails.StaffID,
+	)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update user: %w", result.Error)
+	}
+
+	return nil
+}
+
+// script/auth.go - Add this function
+
+func UpdateUserLoginByUsername(username string) error {
+	db := config.DBConnList[0]
+
+	query := `
+		UPDATE users 
+		SET last_login = NOW(), 
+		    is_active = true,
+		    requires_password_reset = false,
+		    updated_at = NOW()
+		WHERE username = $1
+	`
+
+	result := db.Exec(query, username)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update user login: %w", result.Error)
+	}
+
+	return nil
 }

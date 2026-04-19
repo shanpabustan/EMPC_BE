@@ -1,18 +1,39 @@
 package mdlAuth
 
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
 // ==========================
 // REGISTER STAFF
 // ==========================
-type StaffRegistrationApiRequest struct {
-	Username        string `json:"username"`         // optional
-	StaffID         string `json:"staff_id"`         // required
-	FirstName       string `json:"first_name"`       // optional
-	MiddleName      string `json:"middle_name"`      // optional
-	LastName        string `json:"last_name"`        // optional
-	Email           string `json:"email"`            // optional
-	PhoneNo         string `json:"phone_no"`         // optional
-	Birthdate       string `json:"birthdate"`        // optional
-	InstitutionCode string `json:"institution_code"` // required
+
+type Date struct {
+	time.Time
+}
+
+const dateLayout = "2006-01-02"
+
+func (d *Date) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(string(b), `"`)
+	if s == "" || s == "null" {
+		return nil
+	}
+	t, err := time.Parse(dateLayout, s)
+	if err != nil {
+		return fmt.Errorf("birthdate must be in YYYY-MM-DD format: %w", err)
+	}
+	d.Time = t
+	return nil
+}
+
+func (d Date) MarshalJSON() ([]byte, error) {
+	if d.IsZero() {
+		return []byte("null"), nil
+	}
+	return []byte(`"` + d.Format(dateLayout) + `"`), nil
 }
 
 type StaffRegistrationAPIResponse struct {
@@ -28,10 +49,34 @@ type StaffRegistrationAPIData struct {
 	Details   *RegisterStaffResult `json:"details,omitempty"`
 }
 
+// type RegisterStaffRequest struct {
+// 	StaffID         string `json:"staff_id"`         // required
+// 	InstitutionCode string `json:"institution_code"` // required
+// 	Birthdate       string `json:"birthdate"`        // required
+// }
+
 type RegisterStaffRequest struct {
-	StaffID         string `json:"staff_id"`         // required
-	InstitutionCode string `json:"institution_code"` // required
-	Birthdate       string `json:"birthdate"`        // required
+	StaffID         string `json:"staff_id"`
+	InstitutionCode string `json:"institution_code"`
+	Username        string `json:"username,omitempty"`
+	FirstName       string `json:"first_name,omitempty"`
+	MiddleName      string `json:"middle_name,omitempty"`
+	LastName        string `json:"last_name,omitempty"`
+	Email           string `json:"email,omitempty"`
+	PhoneNo         string `json:"phone_no,omitempty"`
+	Birthdate       *Date  `json:"birthdate,omitempty"` 
+}
+
+type StaffRegistrationApiRequest struct {
+	StaffID         string `json:"staff_id"`
+	InstitutionCode string `json:"institution_code"`
+	Username        string `json:"username,omitempty"`
+	FirstName       string `json:"first_name,omitempty"`
+	MiddleName      string `json:"middle_name,omitempty"`
+	LastName        string `json:"last_name,omitempty"`
+	Email           string `json:"email,omitempty"`
+	PhoneNo         string `json:"phone_no,omitempty"`
+	Birthdate       *Date  `json:"birthdate,omitempty"` // ← pointer so omitempty works
 }
 
 type RegisterStaffResult struct {
@@ -47,7 +92,7 @@ type RegisterStaffResult struct {
 	InstitutionID   int    `json:"institution_id"`
 	InstitutionCode string `json:"institution_code"`
 	InstitutionName string `json:"institution_name"`
-	Password        string `json:"password"` // temporary password
+	Password        string `json:"password"`
 }
 
 // ==========================
@@ -90,6 +135,48 @@ type LoginResult struct {
 	LastPasswordReset     string `json:"last_password_reset"`
 	Token                 string `json:"token"`
 	Is2FARequired         bool   `json:"is_2fa_required"`
+}
+
+// model/auth.go - Add these models
+
+type UserWithNavigationResponse struct {
+	Email      string      `json:"email"`
+	FirstName  string      `json:"first_name"`
+	MiddleName string      `json:"middle_name"`
+	LastName   string      `json:"last_name"`
+	StaffID    string      `json:"staff_id"`
+	RoleID     *int        `json:"role_id"`
+	RoleName   string      `json:"role_name"`
+	Navigation interface{} `json:"navigation"`
+}
+
+type LoginResponseData struct {
+	Token string                      `json:"token"`
+	User  *UserWithNavigationResponse `json:"user"`
+}
+
+// model/auth.go - Add this model
+
+type User struct {
+	ID                    int     `json:"id"`
+	Username              string  `json:"username"`
+	StaffID               string  `json:"staff_id"`
+	FirstName             string  `json:"first_name"`
+	MiddleName            string  `json:"middle_name"`
+	LastName              string  `json:"last_name"`
+	Email                 string  `json:"email"`
+	PhoneNo               string  `json:"phone_no"`
+	Birthdate             string  `json:"birthdate"`
+	RoleID                *int    `json:"role_id"`
+	RoleName              string  `json:"role_name"`
+	IsActive              bool    `json:"is_active"`
+	RequiresPasswordReset bool    `json:"requires_password_reset"`
+	InstitutionID         int     `json:"institution_id"`
+	InstitutionCode       string  `json:"institution_code"`
+	InstitutionName       string  `json:"institution_name"`
+	CreatedAt             string  `json:"created_at"`
+	UpdatedAt             string  `json:"updated_at"`
+	DeletedAt             *string `json:"deleted_at,omitempty"`
 }
 
 // ==========================
